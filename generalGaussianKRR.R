@@ -6,6 +6,7 @@ generalGaussianKernel<- function(D,gamma){
   }
   kernel=exp(-Dk) 
 }
+
 fitKRR <- function(X,y,X_new,gamma)
 {
   n=nrow(X)
@@ -31,18 +32,19 @@ fitKRR <- function(X,y,X_new,gamma)
   
   GCV=rep(NA,length(alambda))
   for (lamk in 1:length(alambda)) {
-    S=K%*%solve(K+alambda[lamk]*I)
+    S=K%*%solve(K+n*alambda[lamk]*I)
     GCV[lamk]=n*sum(((I-S)%*%y)^2)/((n-sum(diag(S)))^2)
   }
   opt.lambda=alambda[which.min(GCV)]
-  alpha=solve(K+opt.lambda*I)%*%y
+  alpha=solve(K+n*opt.lambda*I)%*%y
   
   pred=K_new%*%alpha
   
   return(pred)
 }
-choosegamma0TMP <- function(X,y,lambda=1/length(y),tau=1/length(y), 
-                            gamma0=-1, lambda0 = 1/sqrt(n),    fold)
+
+choosegamma0TMP <- function(X,y,lambda=(length(y))^(-1),tau=1/length(y), 
+                            gamma0=-1, lambda0 = 1/sqrt(n), fold)
 {
   n=nrow(X)
   p=ncol(X)
@@ -53,16 +55,20 @@ choosegamma0TMP <- function(X,y,lambda=1/length(y),tau=1/length(y),
   }
   
   ni=floor(n/fold)
-  Iv <- list()   # sub-samples 
+  Iv <- list()   # sub-samples of D_i 
   Im <- list()   # Identity matrix
-  for (i in 1:(fold-1))
+  
+  Iv[[1]]=sort(sample(1:n,n-(fold-1)*ni))
+  Im[[1]]  = diag(1, n-length(Iv[[1]]))
+  cho_ind=c()
+  for (i in 2:(fold))
   {
-    Iv[[i]] = setdiff(1:n,((i-1)*ni+1):(i*ni))
-    Im[[i]]  = diag(1, ni)
+    cho_ind=c(cho_ind,Iv[[i-1]])
+    res_ind=setdiff(1:n,cho_ind)
+    Iv[[i]] = sort(sample(res_ind,ni))
+    Im[[i]]  = diag(1, n-length(Iv[[i]]))
     
   }
-  Iv[[fold]] = setdiff(1:n,((fold-1)*ni+1):n)
-  Im[[fold]] = diag(1, n-(fold-1)*ni)
   
   Ialpha <- list()   # alpha
   E <- list()
@@ -73,7 +79,7 @@ choosegamma0TMP <- function(X,y,lambda=1/length(y),tau=1/length(y),
     s_gammaV = tau*sum(abs(gamma))   #LASSO penalty
     for (i in 1:fold)
     {
-      Minv[[i]] <<- solve(K[-Iv[[i]],-Iv[[i]]]+lambda*Im[[i]])
+      Minv[[i]] <<- solve(K[-Iv[[i]],-Iv[[i]]]+n*lambda*Im[[i]])
       Ialpha[[i]] <<- Minv[[i]]%*%y[-Iv[[i]]]
       E[[i]] <<- y[Iv[[i]]]-K[Iv[[i]],-Iv[[i]]]%*%Ialpha[[i]]
       s_gammaV= s_gammaV + (mean(E[[i]]^2))
@@ -146,7 +152,7 @@ choosegamma0TMP <- function(X,y,lambda=1/length(y),tau=1/length(y),
     gamma_1 = abs(optgamma$par)
   }
   
-  opt.gamma=abs(optgamma$par)
+  opt.gamma=gamma_1
   opt.gamma = opt.gamma*(opt.gamma/max(opt.gamma) > 1.0e-3)
   coef1 = optimize(f0, c(0.05, 20), tol=0.0001, gamma_0=opt.gamma)
   opt.gamma = opt.gamma*coef1$minimum
@@ -178,7 +184,7 @@ chooseGamma = function(X, y, fold)
   lambda0 = -1
   gamma0  = -1
   
-  for (tau in (1:10/10)^2*10)
+  for (tau in (1:10/10))
   {
     A = choosegamma0TMP(X, y, tau=tau, lambda0 = lambda0, gamma0=gamma0, fold=fold)
     lambda0 = A$lambda0 
@@ -188,10 +194,11 @@ chooseGamma = function(X, y, fold)
     {
       BIC0 = A$criterion
       A0 = A
+      criterion0=A$criterion
     }
   }
   
-#  print(criterionALL)
+  #  print(criterionALL)
   
   return(list(gamma= A0$gamma, gamma0 = A0$gamma0,lambda = A0$lambda,
               criterion=A0$criterion, criterionALL=criterionALL))
